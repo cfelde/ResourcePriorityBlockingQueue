@@ -30,43 +30,102 @@ public final class TaskGroup {
     private final ImmutableByteArray id;
     private final int priority;
     
+    // Map contains all tasks assigned to a particular group instance
     private final ConcurrentHashMap<ImmutableByteArray, Task> tasks = new ConcurrentHashMap<ImmutableByteArray, Task>();
     
+    // The ZERO group is a static group with a fixed zero priority value.
+    // This is the default group used by tasks if no other group is assigned.
     public static final ImmutableByteArray ZERO_ID = new ImmutableByteArray("ZERO".getBytes(CommonUtils.getCharset()));
     public static final TaskGroup ZERO = new TaskGroup(ZERO_ID, 0);
     
+    // A static map containing all registered groups, including the ZERO group.
     private static final ConcurrentHashMap<ImmutableByteArray, TaskGroup> groups = new ConcurrentHashMap<ImmutableByteArray, TaskGroup>();
     
     static {
         groups.put(ZERO_ID, ZERO);
     }
-    
+
+    /**
+     * Get task group instance associated with given id.
+     * 
+     * @param id Task group ID
+     * @return Task group
+     */
     public static TaskGroup getGroup(byte[] id) {
         return getGroup(new ImmutableByteArray(id));
     }
     
+    /**
+     * Get task group instance associated with given id.
+     * 
+     * @param id Task group ID
+     * @return Task group
+     */
     public static TaskGroup getGroup(ImmutableByteArray id) {
         return groups.get(id);
     }
     
+    /**
+     * Create group associated with given ID and default priority of zero.
+     * 
+     * If a group by given ID already exists the existing instance is returned
+     * with no changes to existing group priority.
+     * 
+     * @param id Group ID
+     * @return Group instance
+     */
     public static TaskGroup createGroup(byte[] id) {
         return createGroup(id, 0);
     }
     
+    /**
+     * Create group associated with given ID and default priority of zero.
+     * 
+     * If a group by given ID already exists the existing instance is returned
+     * with no changes to existing group priority.
+     * 
+     * @param id Group ID
+     * @return Group instance
+     */
     public static TaskGroup createGroup(ImmutableByteArray id) {
         return createGroup(id, 0);
     }
     
+    /**
+     * Create group associated with given ID and given priority.
+     * 
+     * If a group by given ID already exists the existing instance is returned
+     * with no changes to existing group priority.
+     * 
+     * @param id Group ID
+     * @param priority Group priority
+     * @return Group instance
+     */
     public static TaskGroup createGroup(byte[] id, int priority) {
         return createGroup(new ImmutableByteArray(id), priority);
     }
     
+    /**
+     * Create group associated with given ID and given priority.
+     * 
+     * If a group by given ID already exists the existing instance is returned
+     * with no changes to existing group priority.
+     * 
+     * @param id Group ID
+     * @param priority Group priority
+     * @return Group instance
+     */
     public static TaskGroup createGroup(ImmutableByteArray id, int priority) {
         groups.putIfAbsent(id, new TaskGroup(id, priority));
         
         return groups.get(id);
     }
-    
+
+    /**
+     * Returns an unmodifiable map of all registered groups.
+     * 
+     * @return Map of all groups, associated by group ID
+     */
     public static Map<ImmutableByteArray, TaskGroup> getAllGroups() {
         return Collections.unmodifiableMap(groups);
     }
@@ -87,19 +146,45 @@ public final class TaskGroup {
     protected synchronized boolean replaceTask(Task oldTask, Task newTask) {
         return getGroup(id).tasks.replace(newTask.getId(), oldTask, newTask);
     }
-    
-    public boolean haveTask(Task task) {
+
+    /**
+     * Returns true if given task is part of group.
+     * 
+     * @param task Task
+     * @return True if task is part of group
+     */
+    public synchronized boolean haveTask(Task task) {
         return getGroup(id).tasks.containsKey(task.getId());
     }
-    
+
+    /**
+     * Returns an unmodifiable collection of tasks who belong to group.
+     * 
+     * @return Collection of tasks on group
+     */
     public Collection<Task> getTasks() {
         return Collections.unmodifiableCollection(getGroup(id).tasks.values());
     }
-    
+
+    /**
+     * Returns a count for number of tasks on group.
+     * 
+     * @return Task count
+     */
     public int size() {
         return getGroup(id).tasks.size();
     }
-    
+
+    /**
+     * Change the priority of this group.
+     * 
+     * All tasks associated with this group will be invalidated, i.e. set to
+     * canceled (see {@link Task.STATUS), and recreated with the new group
+     * priority.
+     * 
+     * @param priority New group priority
+     * @return Collection of group tasks
+     */
     public synchronized Collection<Task> setPriority(int priority) {
         if (ZERO_ID.equals(id))
             throw new UnsupportedOperationException("Priority can not be changed on ZERO group");
@@ -112,9 +197,18 @@ public final class TaskGroup {
         
         Collection<Task> oldTasks = oldGroup.getTasks();
         
-        if (oldGroup != groups.put(id, newGroup))
+        // A concurrent modification exception shouldn't be possible here
+        // since related methods (including this) should be synchrpnized.
+        // We can do a simple reference check since a group is immutable.
+        if (oldGroup != groups.put(id, newGroup)) {
+            // Clean up by putting old group back on map..
+            groups.put(id, oldGroup);
+            
             throw new ConcurrentModificationException();
+        }
         
+        // Move all tasks from old group to new group. This act will also
+        // re-queue the task with the new priority settings.
         for (Task task: oldTasks) {
             if (task.getStatus() == Task.STATUS.QUEUED)
                 task.setGroup(newGroup);
@@ -122,11 +216,21 @@ public final class TaskGroup {
         
         return newGroup.getTasks();
     }
-    
+
+    /**
+     * Return the group priority setting.
+     * 
+     * @return Group priority
+     */
     public int getPriority() {
         return getGroup(id).priority;
     }
-    
+
+    /**
+     * Return group ID
+     * 
+     * @return Group ID
+     */
     public ImmutableByteArray getId() {
         return id;
     }

@@ -20,6 +20,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -81,45 +82,119 @@ public class ResourcePriorityBlockingQueue implements BlockingQueue<Task>, Close
         this.tasksNotification = parentQueue.tasksNotification;
     }
     
+    /**
+     * Create a new queue instance. Maximum size of queue is Integer.MAX_VALUE,
+     * if memory permits.
+     * 
+     * @param name Queue name
+     * @param prioritizer Queue prioritizer
+     * @param allocator Queue allocator
+     * @return True if queue was created
+     */
     public static boolean createQueue(String name, ResourcePrioritizer prioritizer, ResourceAllocator allocator) {
         return createQueue(name, prioritizer, allocator, Integer.MAX_VALUE);
     }
-    
+
+    /**
+     * Create a new queue instance.
+     * 
+     * @param name Queue name
+     * @param prioritizer Queue prioritizer
+     * @param allocator Queue allocator
+     * @param maxSize Max queue size before queue blocks
+     * @return True if queue was created
+     */
     public static boolean createQueue(String name, ResourcePrioritizer prioritizer, ResourceAllocator allocator, int maxSize) {
         return queues.putIfAbsent(name, new ResourcePriorityBlockingQueue(prioritizer, allocator, maxSize)) == null;
     }
-    
+
+    /**
+     * Returns an unmodifiable map of all registered queues.
+     * 
+     * @return Map of all active queues
+     */
     public static Map<String, ResourcePriorityBlockingQueue> getAllQueues() {
         return Collections.unmodifiableMap(queues);
     }
     
-    public static boolean shutdownQueue(String name) {
+    /**
+     * Shut down a queue and release all tasks.
+     * 
+     * All tasks are cleared from the queue with no new tasks allowed to any
+     * existing queue instances. The method returns all tasks still in queue
+     * state at the time of shutdown. These tasks are released from the queue
+     * with their state set back to IDLE.
+     * 
+     * If the queue doesn't exist or is already shut down, null is returned.
+     * 
+     * @param name Queue name
+     * @return Unassigned tasks on queue, with the tasks now in idle state
+     */
+    public static Collection<Task> shutdownQueue(String name) {
         ResourcePriorityBlockingQueue removedQueue = queues.remove(name);
         
-        if (removedQueue == null)
-            return false;
+        if (removedQueue == null || !removedQueue.isActive)
+            return null;
         
         removedQueue.isActive = false;
         
-        for (Task task: removedQueue.tasks.keySet().toArray(new Task[0])) {
+        Task[] tasks = removedQueue.tasks.keySet().toArray(new Task[0]);
+        
+        for (Task task: tasks) {
             removedQueue.clearTask(task);
         }
         
         removedQueue.tasks.clear();
         removedQueue.resources.clear();
         
-        return true;
+        Set<Task> taskSet = new HashSet<Task>();
+        
+        for (Task task: tasks) {
+            if (task.setStatus(Task.STATUS.QUEUED, Task.STATUS.IDLE))
+                taskSet.add(task);
+        }
+        
+        return taskSet;
     }
-    
+
+    /**
+     * Get the publisher side of a queue instance.
+     * 
+     * Queue must already exist otherwise a null is returned. A publisher queue
+     * can not be used to polling tasks from the queue, only for pushing tasks
+     * to the queue.
+     * 
+     * @param name Name of queue
+     * @return Publisher queue instance
+     */
     public static ResourcePriorityBlockingQueue getPublisherQueue(String name) {
         return queues.get(name);
     }
     
+    /**
+     * Get the subscriber side of a queue instance.
+     * 
+     * Queue must already exist otherwise a null is returned. A subscriber queue
+     * can both poll and push tasks on the a queue instance. The tasks available
+     * for polling are described by the particular allocator and prioritizer
+     * used when creating the queue instance.
+     * 
+     * This method is not thread safe for any particular name and resource
+     * instance combination, but is thread safe for multiple unique pairs.
+     * 
+     * @param name Name of queue
+     * @param resource Resource describing poller
+     * @return Queue instance
+     * @throws IllegalArgumentException If resource is already tied to a queue
+     */
     public static ResourcePriorityBlockingQueue getSubscriberQueue(String name, Resource resource) {
         ResourcePriorityBlockingQueue parentQueue = getPublisherQueue(name);
         
         if (parentQueue == null)
             return null;
+        
+        if (resource.getAssociatedQueue() != parentQueue.resources.get(resource))
+            throw new IllegalArgumentException("Given resource is already tied to a different queue");
         
         ResourcePriorityBlockingQueue subscriberQueue = new ResourcePriorityBlockingQueue(parentQueue, resource);
         subscriberQueue = parentQueue.resources.putIfAbsent(resource, subscriberQueue);
@@ -194,6 +269,12 @@ public class ResourcePriorityBlockingQueue implements BlockingQueue<Task>, Close
             task.setQueue(this);
     }
     
+    /**
+     * Returns true if this is a subscriber rather than a publisher
+     * queue instance.
+     * 
+     * @return True if subscriber queue instance
+     */
     public boolean isSubscriberQueue() {
         return subscriberQueue != null;
     }

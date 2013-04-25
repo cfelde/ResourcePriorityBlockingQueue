@@ -27,6 +27,8 @@ public final class Task implements Comparable<Task> {
         IDLE, QUEUED, ASSIGNED, CANCELED
     };
     
+    // Used to generate a unique task sequence number,
+    // which will ensure that all tasks are unique (in order).
     private static final AtomicLong SEQ_GENERATOR = new AtomicLong();
     private final long sequence = SEQ_GENERATOR.getAndIncrement();
     
@@ -35,8 +37,16 @@ public final class Task implements Comparable<Task> {
     private final TaskGroup group;
     private final int priority;
     
+    // The only volatile part of a specific task instance,
+    // representing its queue state. A task will always start out being IDLE.
+    // IDLE means not yet queued. From there it typically moves to QUEUED and
+    // then either ASSIGNED or CANCELED.
     private final AtomicReference<STATUS> status = new AtomicReference<>(STATUS.IDLE);
     
+    // The queue to which this task belongs. The state will always be set to
+    // QUEUED once this value is set. Value is set when a task enters a queue
+    // instance. This also implies that a particular task instance may only ever
+    // belong to just one queue instance.
     private ResourcePriorityBlockingQueue queue;
 
     /**
@@ -169,30 +179,82 @@ public final class Task implements Comparable<Task> {
         }
     }
 
+    /**
+     * Return the ID associated with task.
+     * 
+     * @return Task ID
+     */
     public ImmutableByteArray getId() {
         return id;
     }
 
+    /**
+     * Return the payload associated with task.
+     * 
+     * @return Task payload
+     */
     public ImmutableByteArray getPayload() {
         return payload;
     }
 
+    /**
+     * Get task priority.
+     * 
+     * @return Task priority
+     */
     public int getPriority() {
         return priority;
     }
 
+    /**
+     * Set task priority, with higher values being higher priority.
+     * 
+     * If a task priority changes, the existing task instance is invalidated,
+     * see {@link STATUS}, and a new task instance copy with updated priority
+     * returned. Priority can not be changed if task is already assigned
+     * or canceled.
+     * 
+     * @param priority New task priority
+     * @return New task instance
+     */
     public Task setPriority(int priority) {
         return setPriorityGroup(priority, group);
     }
 
+    /**
+     * Get group on which task instance is associated. Default group is the
+     * ZERO group is no other group is specified.
+     * 
+     * @return Task group
+     */
     public TaskGroup getGroup() {
         return group;
     }
 
+    /**
+     * Set the task group for this task instance.
+     * 
+     * The existing task instance is invalidated and a new task instance copy
+     * with the new group association returned.
+     * 
+     * @param group Task group
+     * @return New task instance
+     */
     public Task setGroup(TaskGroup group) {
         return setPriorityGroup(priority, group);
     }
 
+    /**
+     * Update both task priority and task group in one go.
+     * 
+     * As with {@link #setPriority(int)} and
+     * {@link #setGroup(com.cfelde.rpqueue.TaskGroup)} this method invalidates
+     * the existing group and returns a new instance copy of the task.
+     * 
+     * @param priority Task priority
+     * @param group Task group
+     * @return New task instance copy
+     */
     public Task setPriorityGroup(final int priority, final TaskGroup group) {
         switch (status.get()) {
             case IDLE:
@@ -228,6 +290,11 @@ public final class Task implements Comparable<Task> {
         }
     }
 
+    /**
+     * Returns current task status.
+     * 
+     * @return Task status
+     */
     public STATUS getStatus() {
         return status.get();
     }
@@ -236,6 +303,11 @@ public final class Task implements Comparable<Task> {
         return this.status.compareAndSet(expected, update);
     }
     
+    /**
+     * Get the unique task sequence ID.
+     * 
+     * @return Task sequence ID
+     */
     public long getSequenceId() {
         return sequence;
     }

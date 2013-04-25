@@ -31,10 +31,10 @@ public interface ResourceAllocator {
      * resources polling the task being the resource at which the task is
      * allocated.
      * 
-     * If method returns an empty set or null, the task will not be queued on
-     * any resources. Task will stay unqueued till either a new resource joins
-     * the pool or something changes related to the task (priority or group),
-     * and this then results in the task being queued.
+     * If method returns an empty set (null not allowed), the task will not be
+     * queued on any resources. Task will stay unqueued till either a new
+     * resource joins the pool or something changes related to the task
+     * (priority or group), and this then results in the task being queued.
      * 
      * The given map of resources are sorted in descending order as prioritized
      * by the active ResourcePrioritizer. The returned set of resources must be
