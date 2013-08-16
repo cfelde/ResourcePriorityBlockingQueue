@@ -108,4 +108,23 @@ public class TestImmutableByteArray {
         
         assertTrue(gotException);
     }
+    
+    @Test
+    public void toFromObject() {
+        Long value = new Random().nextLong();
+        
+        boolean gotException = false;
+        
+        try {
+            ImmutableByteArray iba = ImmutableByteArray.fromObject(value);
+            Long out = ImmutableByteArray.toObject(iba);
+            
+            assertTrue(out instanceof Long);
+            assertEquals((long)value, (long)out);
+        } catch (Exception ex) {
+            gotException = true;
+        }
+        
+        assertFalse(gotException);
+    }
 }

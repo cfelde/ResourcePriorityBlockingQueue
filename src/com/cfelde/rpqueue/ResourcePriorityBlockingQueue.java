@@ -230,8 +230,14 @@ public class ResourcePriorityBlockingQueue implements BlockingQueue<Task>, Close
         for (Resource resource: allocator.assign(task, sortedResources, allResources)) {
             if (!sortedResources.containsValue(resource))
                 throw new IllegalArgumentException("Resource not available for assignement");
-                
-            tasks.get(task).add(resource);
+            
+            Set<Resource> resourceSet = tasks.get(task);
+            if (resourceSet == null) {
+                // Task was polled off the queue while we were assigning it
+                break;
+            }
+            
+            resourceSet.add(resource);
             resource.getAssociatedQueue().offer(task);
         }
     }

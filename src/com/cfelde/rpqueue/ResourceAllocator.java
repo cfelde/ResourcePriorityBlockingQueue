@@ -27,7 +27,7 @@ public interface ResourceAllocator {
      * Method should return a set of resources at which the given task should
      * be queued.
      * 
-     * A task may be queued as several resources, with the first
+     * A task may be queued at several resources, with the first
      * resources polling the task being the resource at which the task is
      * allocated.
      * 

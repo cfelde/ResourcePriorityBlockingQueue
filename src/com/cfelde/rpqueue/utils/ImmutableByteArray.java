@@ -15,6 +15,11 @@
  */
 package com.cfelde.rpqueue.utils;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.UUID;
@@ -117,5 +122,22 @@ public final class ImmutableByteArray {
         ByteBuffer buffer = ByteBuffer.wrap(b);
         
         return new UUID(buffer.getLong(), buffer.getLong());
+    }
+    
+    public static ImmutableByteArray fromObject(Object object) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream oos = new ObjectOutputStream(baos);
+        
+        oos.writeObject(object);
+        oos.flush();
+        
+        return new ImmutableByteArray(baos.toByteArray());
+    }
+    
+    public static <T> T toObject(ImmutableByteArray payload) throws IOException, ClassNotFoundException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(payload.payload);
+        ObjectInputStream ois = new ObjectInputStream(bais);
+        
+        return (T) ois.readObject();
     }
 }
